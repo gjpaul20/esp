@@ -1,4 +1,4 @@
--- Pet Detector ESP with Status GUI
+-- Pet Detector ESP with AutoHop + Status GUI
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
@@ -58,6 +58,13 @@ end
 
 local statusLabel = createStatusGui()
 
+-- AutoHop function
+local function AutoHop()
+    statusLabel.Text = "🚀 Hopping to next server..."
+    print("🚀 Hopping to next server...")
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/typical-overseer/roblox-server-hop/main/serverhop.lua"))()
+end
+
 -- Main test function
 local function testEggPets()
     statusLabel.Text = "🔍 Testing eggPets..."
@@ -70,6 +77,7 @@ local function testEggPets()
     if not success then
         print("❌ Could not access eggPets - possibly patched.")
         statusLabel.Text = "❌ eggPets access failed → hopping..."
+        AutoHop()
         return false
     end
 
@@ -84,11 +92,13 @@ local function testEggPets()
         else
             print("⚠️ eggPets present but empty → hopping...")
             statusLabel.Text = "⚠️ eggPets EMPTY → hopping..."
+            AutoHop()
             return false
         end
     else
         print("❌ eggPets not detected → hopping...")
         statusLabel.Text = "❌ eggPets not detected → hopping..."
+        AutoHop()
         return false
     end
 end
@@ -169,10 +179,6 @@ if Tab and Tab.AddToggle then
 
         if espEnabled then
             local goodServer = testEggPets()
-            if not goodServer then
-                print("🔄 Auto hop here if you want!")
-                -- add your own auto-hop here if needed
-            end
 
             for _, object in collectionService:GetTagged("PetEggServer") do
                 task.spawn(AddEsp, object)
