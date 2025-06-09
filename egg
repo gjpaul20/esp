@@ -1,5 +1,97 @@
--- sorry for leaking the entire script, too bad 
+-- SETTINGS:
+local AUTO_HOP_ENABLED = true
+local MIN_EGG_PETS_ENTRIES = 1 -- How many entries required to accept server (1+ is good)
 
+-- AUTO-HOP UTIL:
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+
+local function serverHop()
+    print("🔄 Hopping to another server...")
+
+    local PlaceId = game.PlaceId
+    local url = "https://games.roblox.com/v1/games/" .. PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"
+
+    local servers = {}
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+
+    if success then
+        local data = HttpService:JSONDecode(response)
+        if data and data.data then
+            for _, server in ipairs(data.data) do
+                if server.playing < server.maxPlayers then
+                    table.insert(servers, server.id)
+                end
+            end
+        end
+    end
+
+    if #servers > 0 then
+        local randomServerId = servers[math.random(1, #servers)]
+        print("🚀 Teleporting to server ID:", randomServerId)
+        TeleportService:TeleportToPlaceInstance(PlaceId, randomServerId, localPlayer)
+    else
+        warn("❌ No servers found to hop.")
+    end
+end
+
+-- EGG PETS TEST:
+local eggModels = {}
+local eggPets = {}
+
+local function testEggPets()
+    print("🔍 Testing eggPets...")
+    local success = pcall(function()
+        local hatchFunc = getupvalue(getupvalue(getconnections(game:GetService("ReplicatedStorage").GameEvents.PetEggService.OnClientEvent)[1].Function, 1), 2)
+        eggModels = getupvalue(hatchFunc, 1) or {}
+        eggPets = getupvalue(hatchFunc, 2) or {}
+    end)
+
+    if not success then
+        print("❌ Could not access eggPets - possibly patched.")
+        return false
+    end
+
+    if type(eggPets) == "table" then
+        local count = 0
+        for k, v in pairs(eggPets) do count = count + 1 end
+        print("✅ eggPets detected! Entries: " .. count)
+        if count >= MIN_EGG_PETS_ENTRIES then
+            print("🎉 GOOD SERVER FOUND! You can use the ESP here!")
+            return true
+        else
+            print("⚠️ eggPets is present but empty. Will hop to another server...")
+            return false
+        end
+    else
+        print("❌ eggPets not detected. Will hop to another server...")
+        return false
+    end
+end
+
+-- MAIN EXECUTION:
+if AUTO_HOP_ENABLED then
+    local goodServer = testEggPets()
+
+    if not goodServer then
+        -- Use queue_on_teleport to reload this same script after teleport:
+        if queue_on_teleport then
+            queue_on_teleport('loadstring(game:HttpGet("YOUR_SCRIPT_URL_HERE"))()')
+        else
+            warn("⚠️ Your executor does not support queue_on_teleport. Manual re-execution needed.")
+        end
+
+        task.wait(3) -- Wait a bit before hopping
+        serverHop()
+        return -- Stop current execution, will reload in next server
+    end
+end
+
+-- REST OF YOUR ESP SCRIPT BELOW:
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
@@ -14,18 +106,7 @@ local Window = Fluent:CreateWindow({
 
 local Tab = Window:AddTab({ Title = "Main", Icon = "home" })
 
-local replicatedStorage = game:GetService("ReplicatedStorage")
 local collectionService = game:GetService("CollectionService")
-local players = game:GetService("Players")
-local localPlayer = players.LocalPlayer
-
-local eggModels = {}
-local eggPets = {}
-pcall(function()
-	local hatchFunc = getupvalue(getupvalue(getconnections(replicatedStorage.GameEvents.PetEggService.OnClientEvent)[1].Function, 1), 2)
-	eggModels = getupvalue(hatchFunc, 1) or {}
-	eggPets = getupvalue(hatchFunc, 2) or {}
-end)
 
 local espEnabled = false
 local espCache = {}
@@ -42,7 +123,7 @@ end
 
 local function CreateEspGui(object, text)
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "PetEggDetectorFuck"
+	billboard.Name = "PetEggDetector"
 	billboard.Adornee = object:FindFirstChildWhichIsA("BasePart") or object.PrimaryPart or object
 	billboard.Size = UDim2.new(0, 200, 0, 50)
 	billboard.StudsOffset = Vector3.new(0, 2.5, 0)
@@ -113,7 +194,7 @@ if Tab and Tab.AddToggle then
 			removedConn = collectionService:GetInstanceRemovedSignal("PetEggServer"):Connect(RemoveEsp)
 
 			pcall(function()
-				local conn = getconnections(replicatedStorage.GameEvents.EggReadyToHatch_RE.OnClientEvent)[1]
+				local conn = getconnections(game:GetService("ReplicatedStorage").GameEvents.EggReadyToHatch_RE.OnClientEvent)[1]
 				if conn and typeof(conn.Function) == "function" then
 					hookfunction(conn.Function, newcclosure(function(objectId, petName)
 						UpdateEsp(objectId, petName)
@@ -132,5 +213,5 @@ if Tab and Tab.AddToggle then
 		end
 	end)
 else
-	warn("nigger are you using xeno")
+	warn("⚠️ Are you using a supported executor?")
 end
