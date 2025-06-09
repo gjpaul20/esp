@@ -1,10 +1,9 @@
--- Pet Detector ESP with AutoHop + Status GUI
-
+-- Pet Detector Safe Final Version 🚀
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
     Title = "Pet Detector",
-    SubTitle = "SkillyBetaHub Script",
+    SubTitle = "SkillyBetaHub Script (Safe Final 🚀)",
     TabWidth = 160,
     Size = UDim2.fromOffset(500, 300),
     Acrylic = false,
@@ -18,92 +17,32 @@ local replicatedStorage = game:GetService("ReplicatedStorage")
 local collectionService = game:GetService("CollectionService")
 local players = game:GetService("Players")
 local localPlayer = players.LocalPlayer
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local hopBlacklist = {}
+local hopCount = 0
 
 local eggModels = {}
 local eggPets = {}
+
+-- Safe read of eggModels and eggPets
+pcall(function()
+    local eggFuncConnList = getconnections(replicatedStorage.GameEvents.PetEggService.OnClientEvent)
+    if eggFuncConnList and #eggFuncConnList > 0 then
+        local eggFunc = eggFuncConnList[1]
+        local hatchFunc = getupvalue(getupvalue(eggFunc.Function, 1), 2)
+        eggModels = getupvalue(hatchFunc, 1) or {}
+        eggPets = getupvalue(hatchFunc, 2) or {}
+    end
+end)
+
 local espEnabled = false
 local espCache = {}
 local activeEggs = {}
 local addedConn, removedConn
+local statusLabel = nil
 
-local MIN_EGG_PETS_ENTRIES = 1 -- adjust this value if needed
-
--- Screen Status GUI
-local function createStatusGui()
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "EggESP_StatusGui"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.Parent = game:GetService("CoreGui")
-
-    local Frame = Instance.new("Frame")
-    Frame.Parent = ScreenGui
-    Frame.AnchorPoint = Vector2.new(0, 0)
-    Frame.Position = UDim2.new(0, 10, 0, 10)
-    Frame.Size = UDim2.new(0, 350, 0, 50)
-    Frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-    Frame.BackgroundTransparency = 0.3
-    Frame.BorderSizePixel = 0
-
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Parent = Frame
-    TextLabel.Size = UDim2.new(1, 0, 1, 0)
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.TextColor3 = Color3.new(1, 1, 1)
-    TextLabel.TextScaled = true
-    TextLabel.Font = Enum.Font.SourceSansBold
-    TextLabel.Text = "Starting EggESP..."
-
-    return TextLabel
-end
-
-local statusLabel = createStatusGui()
-
--- AutoHop function
-local function AutoHop()
-    statusLabel.Text = "🚀 Hopping to next server..."
-    print("🚀 Hopping to next server...")
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/typical-overseer/roblox-server-hop/main/serverhop.lua"))()
-end
-
--- Main test function
-local function testEggPets()
-    statusLabel.Text = "🔍 Testing eggPets..."
-    local success = pcall(function()
-        local hatchFunc = getupvalue(getupvalue(getconnections(replicatedStorage.GameEvents.PetEggService.OnClientEvent)[1].Function, 1), 2)
-        eggModels = getupvalue(hatchFunc, 1) or {}
-        eggPets = getupvalue(hatchFunc, 2) or {}
-    end)
-
-    if not success then
-        print("❌ Could not access eggPets - possibly patched.")
-        statusLabel.Text = "❌ eggPets access failed → hopping..."
-        AutoHop()
-        return false
-    end
-
-    if type(eggPets) == "table" then
-        local count = 0
-        for k, v in pairs(eggPets) do count = count + 1 end
-        print("✅ eggPets detected! Entries: " .. count)
-        if count >= MIN_EGG_PETS_ENTRIES then
-            print("🎉 GOOD SERVER FOUND!")
-            statusLabel.Text = "🎉 GOOD SERVER FOUND! eggPets Entries: " .. count
-            return true
-        else
-            print("⚠️ eggPets present but empty → hopping...")
-            statusLabel.Text = "⚠️ eggPets EMPTY → hopping..."
-            AutoHop()
-            return false
-        end
-    else
-        print("❌ eggPets not detected → hopping...")
-        statusLabel.Text = "❌ eggPets not detected → hopping..."
-        AutoHop()
-        return false
-    end
-end
-
--- ESP Core
 local function getObjectFromId(objectId)
     for _, eggModel in pairs(eggModels) do
         if eggModel:GetAttribute("OBJECT_UUID") == objectId then
@@ -114,7 +53,7 @@ end
 
 local function CreateEspGui(object, text)
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "PetEggDetectorESP"
+    billboard.Name = "PetEggDetector"
     billboard.Adornee = object:FindFirstChildWhichIsA("BasePart") or object.PrimaryPart or object
     billboard.Size = UDim2.new(0, 200, 0, 50)
     billboard.StudsOffset = Vector3.new(0, 2.5, 0)
@@ -168,8 +107,42 @@ local function RemoveEsp(object)
     activeEggs[objectId] = nil
 end
 
--- GUI Toggle
+local function UpdateStatus(text)
+    if statusLabel then
+        statusLabel:SetText("Status: " .. text)
+    end
+end
+
+local function AutoHop(reason)
+    hopCount = hopCount + 1
+    local currentJobId = game.JobId
+    hopBlacklist[currentJobId] = true
+    warn("🚀 AutoHopping... Reason: "..reason.." | Hop #"..hopCount)
+    UpdateStatus("🚀 Hopping... Reason: "..reason.." | Hop #"..hopCount)
+
+    task.wait(2)
+
+    pcall(function()
+        local servers = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
+        local data = HttpService:JSONDecode(servers)
+
+        for _, server in ipairs(data.data) do
+            if server.id ~= currentJobId and not hopBlacklist[server.id] and server.playing < server.maxPlayers then
+                warn("➡️ Hopping to server ID: "..server.id)
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
+                break
+            end
+        end
+    end)
+end
+
 if Tab and Tab.AddToggle then
+    -- Add status label first
+    statusLabel = Tab:AddParagraph({
+        Title = "Status:",
+        Content = "Waiting..."
+    })
+
     Tab:AddToggle("PetEggDetectESP", {
         Title = "Pet Hatch Detector",
         Description = "eggs need to be ready, then server hop until you got the pet you want.",
@@ -178,24 +151,47 @@ if Tab and Tab.AddToggle then
         espEnabled = state
 
         if espEnabled then
-            local goodServer = testEggPets()
+            UpdateStatus("🟢 Starting Detector...")
 
+            -- Add ESP
             for _, object in collectionService:GetTagged("PetEggServer") do
                 task.spawn(AddEsp, object)
             end
 
+            -- Connect add/remove signals
             addedConn = collectionService:GetInstanceAddedSignal("PetEggServer"):Connect(AddEsp)
             removedConn = collectionService:GetInstanceRemovedSignal("PetEggServer"):Connect(RemoveEsp)
 
-            pcall(function()
-                local conn = getconnections(replicatedStorage.GameEvents.EggReadyToHatch_RE.OnClientEvent)[1]
+            -- Hook egg ready event safely
+            local eggReadyConnList = getconnections(replicatedStorage.GameEvents.EggReadyToHatch_RE.OnClientEvent)
+            if eggReadyConnList and #eggReadyConnList > 0 then
+                local conn = eggReadyConnList[1]
                 if conn and typeof(conn.Function) == "function" then
                     hookfunction(conn.Function, newcclosure(function(objectId, petName)
                         UpdateEsp(objectId, petName)
                     end))
+                    warn("✅ EggReadyToHatch_RE hook success!")
+                    UpdateStatus("🟢 Detector Running | Hop #"..hopCount)
+                else
+                    warn("⚠️ EggReadyToHatch_RE conn.Function missing!")
+                    UpdateStatus("⚠️ EggReadyToHatch_RE hook failed! 🚀 Hopping...")
+                    AutoHop("EggReady hook failed")
                 end
-            end)
+            else
+                warn("⚠️ No connections found on EggReadyToHatch_RE!")
+                UpdateStatus("⚠️ No EggReady conn found! 🚀 Hopping...")
+                AutoHop("No EggReady connections")
+            end
+
+            -- Check if eggPets table is valid
+            if not eggPets or type(eggPets) ~= "table" or #eggPets == 0 then
+                warn("⚠️ eggPets access failed! 🚀 Hopping...")
+                UpdateStatus("⚠️ eggPets access failed! 🚀 Hopping...")
+                AutoHop("eggPets access failed")
+            end
         else
+            -- Disable ESP
+            UpdateStatus("🔴 Detector Disabled.")
             for _, gui in pairs(espCache) do
                 gui:Destroy()
             end
@@ -204,10 +200,8 @@ if Tab and Tab.AddToggle then
 
             if addedConn then addedConn:Disconnect() addedConn = nil end
             if removedConn then removedConn:Disconnect() removedConn = nil end
-
-            statusLabel.Text = "ESP Disabled."
         end
     end)
 else
-    warn("Xeno user detected?")
+    warn("❌ Error: Are you using Xeno or invalid executor?")
 end
