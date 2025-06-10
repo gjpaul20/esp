@@ -1,113 +1,104 @@
--- Lilac AutoFarm with Anti-AFK + Fixed Fluent UI
--- Abuse sprinkler bug safely
-
--- Load Fluent UI
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-
-local Window = Fluent:CreateWindow({
-    Title = "Lilac AutoFarm",
-    SubTitle = "Sprinkler Bug Abuse Script",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(500, 300),
-    Acrylic = false,
-    Theme = "VSC Dark High Contrast",
-    MinimizeKey = Enum.KeyCode.RightControl
-})
-
-local Tab = Window:AddTab({ Title = "Main", Icon = "leaf" })
-
--- Anti-AFK
-local VirtualUser = game:GetService("VirtualUser")
-game:GetService("Players").LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-    print("[Anti-AFK] Sent fake input to prevent kick.")
-end)
-
--- Services
-local collectionService = game:GetService("CollectionService")
-local replicatedStorage = game:GetService("ReplicatedStorage")
-local players = game:GetService("Players")
-local localPlayer = players.LocalPlayer
+-- Destroy old UI if present
+if game.CoreGui:FindFirstChild("LilacFarmGui") then
+    game.CoreGui.LilacFarmGui:Destroy()
+end
 
 -- Variables
 local autoHarvestEnabled = false
 local autoSellEnabled = false
 local harvestedCount = 0
 
--- Get RemoteEvents
-local harvestRemote = replicatedStorage:FindFirstChild("HarvestPlant_RE") or replicatedStorage.GameEvents.HarvestPlant_RE
-local sellRemote = replicatedStorage:FindFirstChild("SellPlant_RE") or replicatedStorage.GameEvents.SellPlant_RE
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local collectionService = game:GetService("CollectionService")
 
--- Harvest function
+-- Simple Functions
 local function HarvestPlant(plant)
-    if plant:GetAttribute("PlantName") == "Lilac" and plant:GetAttribute("ReadyToHarvest") == true then
-        if harvestRemote then
-            harvestRemote:FireServer(plant)
-            harvestedCount = harvestedCount + 1
-            print("[AutoHarvest] Harvested Lilac #" .. harvestedCount)
-            
-            -- Auto Sell after harvest
-            if autoSellEnabled and sellRemote then
-                task.wait(math.random(0.3, 0.6)) -- Random delay to look human
-                sellRemote:FireServer({plant})
-                print("[AutoSell] Sold Lilac #" .. harvestedCount)
-            end
-        end
-    end
+    pcall(function()
+        replicatedStorage.GameEvents.Harvest_RE:FireServer(plant)
+        harvestedCount = harvestedCount + 1
+        UpdateStatus()
+    end)
 end
 
--- Auto Harvest loop
+local function SellPlant(plantName)
+    pcall(function()
+        replicatedStorage.GameEvents.SellPlant_RE:FireServer(plantName)
+    end)
+end
+
+-- UI Setup
+local gui = Instance.new("ScreenGui")
+gui.Name = "LilacFarmGui"
+gui.ResetOnSpawn = false
+gui.Parent = game.CoreGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 250, 0, 150)
+frame.Position = UDim2.new(0, 20, 0, 200)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Parent = gui
+
+local uicorner = Instance.new("UICorner")
+uicorner.CornerRadius = UDim.new(0, 8)
+uicorner.Parent = frame
+
+local harvestButton = Instance.new("TextButton")
+harvestButton.Size = UDim2.new(0, 220, 0, 40)
+harvestButton.Position = UDim2.new(0, 15, 0, 10)
+harvestButton.Text = "Auto Harvest: OFF"
+harvestButton.TextColor3 = Color3.new(1, 1, 1)
+harvestButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+harvestButton.Parent = frame
+
+local sellButton = Instance.new("TextButton")
+sellButton.Size = UDim2.new(0, 220, 0, 40)
+sellButton.Position = UDim2.new(0, 15, 0, 60)
+sellButton.Text = "Auto Sell: OFF"
+sellButton.TextColor3 = Color3.new(1, 1, 1)
+sellButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+sellButton.Parent = frame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0, 220, 0, 30)
+statusLabel.Position = UDim2.new(0, 15, 0, 110)
+statusLabel.Text = "Lilac Harvested: 0"
+statusLabel.TextColor3 = Color3.new(1, 1, 1)
+statusLabel.BackgroundTransparency = 1
+statusLabel.TextScaled = true
+statusLabel.Parent = frame
+
+-- Button logic
+harvestButton.MouseButton1Click:Connect(function()
+    autoHarvestEnabled = not autoHarvestEnabled
+    harvestButton.Text = "Auto Harvest: " .. (autoHarvestEnabled and "ON" or "OFF")
+end)
+
+sellButton.MouseButton1Click:Connect(function()
+    autoSellEnabled = not autoSellEnabled
+    sellButton.Text = "Auto Sell: " .. (autoSellEnabled and "ON" or "OFF")
+end)
+
+-- Update Status Text
+function UpdateStatus()
+    statusLabel.Text = "Lilac Harvested: " .. harvestedCount
+end
+
+-- Main farm loop
 task.spawn(function()
-    while task.wait(0.5) do -- Delay between harvest loops
+    while true do
         if autoHarvestEnabled then
             for _, plant in pairs(collectionService:GetTagged("PlayerPlant")) do
-                if plant:GetAttribute("OWNER") == localPlayer.Name then
+                if plant:GetAttribute("PlantName") == "Lilac" and plant:GetAttribute("ReadyToHarvest") == true then
                     HarvestPlant(plant)
+                    if autoSellEnabled then
+                        task.wait(math.random(1, 2))
+                        SellPlant("Lilac")
+                    end
+                    task.wait(math.random(1, 2))
                 end
             end
         end
+        task.wait(1)
     end
 end)
-
--- UI Controls
-Tab:AddToggle("ToggleAutoHarvestLilac", {
-    Title = "Auto Harvest Lilac",
-    Description = "Automatically harvest 'Lilac' plants when ready.",
-    Default = false
-}):OnChanged(function(state)
-    autoHarvestEnabled = state
-    Fluent:Notify({
-        Title = "Lilac AutoFarm",
-        Content = "Auto Harvest is now " .. (state and "ENABLED" or "DISABLED"),
-        Duration = 3
-    })
-    print("[UI] Auto Harvest " .. (state and "Enabled" or "Disabled"))
-end)
-
-Tab:AddToggle("ToggleAutoSellLilac", {
-    Title = "Auto Sell Lilac",
-    Description = "Automatically sell harvested 'Lilac' plants.",
-    Default = false
-}):OnChanged(function(state)
-    autoSellEnabled = state
-    Fluent:Notify({
-        Title = "Lilac AutoFarm",
-        Content = "Auto Sell is now " .. (state and "ENABLED" or "DISABLED"),
-        Duration = 3
-    })
-    print("[UI] Auto Sell " .. (state and "Enabled" or "Disabled"))
-end)
-
-Tab:AddButton({
-    Title = "Show Harvested Lilac Count",
-    Description = "Shows how many 'Lilac' plants harvested so far.",
-    Callback = function()
-        Fluent:Notify({
-            Title = "Lilac AutoFarm",
-            Content = "Lilac Harvested: " .. harvestedCount,
-            Duration = 4
-        })
-    end
-})
-
