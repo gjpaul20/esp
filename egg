@@ -1,9 +1,13 @@
--- Pet Detector Safe Final Version 🚀
+-- Auto Harvest + Auto Sell "Lilac" with UI
+-- Abuse sprinkler bug smartly
+-- Tested on Grow a Garden 2025
+
+-- Load UI Library (Fluent or any — here using basic library)
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
-    Title = "Pet Detector",
-    SubTitle = "SkillyBetaHub Script (Safe Final 🚀)",
+    Title = "Lilac AutoFarm",
+    SubTitle = "Sprinkler Bug Abuse Script",
     TabWidth = 160,
     Size = UDim2.fromOffset(500, 300),
     Acrylic = false,
@@ -11,197 +15,82 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.RightControl
 })
 
-local Tab = Window:AddTab({ Title = "Main", Icon = "home" })
+local Tab = Window:AddTab({ Title = "Main", Icon = "leaf" })
 
-local replicatedStorage = game:GetService("ReplicatedStorage")
+-- Services
 local collectionService = game:GetService("CollectionService")
+local replicatedStorage = game:GetService("ReplicatedStorage")
 local players = game:GetService("Players")
 local localPlayer = players.LocalPlayer
-local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
 
-local hopBlacklist = {}
-local hopCount = 0
+-- Variables
+local autoHarvestEnabled = false
+local autoSellEnabled = false
+local harvestedCount = 0
 
-local eggModels = {}
-local eggPets = {}
+-- Get Harvest and Sell RemoteEvents (adjust these names if devs change them!)
+local harvestRemote = replicatedStorage:FindFirstChild("HarvestPlant_RE") or replicatedStorage.GameEvents.HarvestPlant_RE
+local sellRemote = replicatedStorage:FindFirstChild("SellPlant_RE") or replicatedStorage.GameEvents.SellPlant_RE
 
--- Safe read of eggModels and eggPets
-pcall(function()
-    local eggFuncConnList = getconnections(replicatedStorage.GameEvents.PetEggService.OnClientEvent)
-    if eggFuncConnList and #eggFuncConnList > 0 then
-        local eggFunc = eggFuncConnList[1]
-        local hatchFunc = getupvalue(getupvalue(eggFunc.Function, 1), 2)
-        eggModels = getupvalue(hatchFunc, 1) or {}
-        eggPets = getupvalue(hatchFunc, 2) or {}
+-- Function: Harvest plant if it's Lilac and ready
+local function HarvestPlant(plant)
+    if plant:GetAttribute("PlantName") == "Lilac" and plant:GetAttribute("ReadyToHarvest") == true then
+        if harvestRemote then
+            harvestRemote:FireServer(plant)
+            harvestedCount = harvestedCount + 1
+            print("[AutoHarvest] Harvested Lilac #" .. harvestedCount)
+            
+            -- Auto Sell after harvest
+            if autoSellEnabled and sellRemote then
+                -- Delay slightly to look human
+                task.wait(math.random(0.3, 0.6))
+                sellRemote:FireServer({plant})
+                print("[AutoSell] Sold Lilac #" .. harvestedCount)
+            end
+        end
+    end
+end
+
+-- Auto Harvest loop
+task.spawn(function()
+    while task.wait(0.5) do -- Adjust delay if needed
+        if autoHarvestEnabled then
+            for _, plant in pairs(collectionService:GetTagged("PlayerPlant")) do
+                if plant:GetAttribute("OWNER") == localPlayer.Name then
+                    HarvestPlant(plant)
+                end
+            end
+        end
     end
 end)
 
-local espEnabled = false
-local espCache = {}
-local activeEggs = {}
-local addedConn, removedConn
-local statusLabel = nil
+-- UI Controls
+Tab:AddToggle("AutoHarvestLilac", {
+    Title = "Auto Harvest Lilac",
+    Description = "Automatically harvest 'Lilac' plants when ready.",
+    Default = false
+}):OnChanged(function(state)
+    autoHarvestEnabled = state
+    print("[UI] Auto Harvest " .. (state and "Enabled" or "Disabled"))
+end)
 
-local function getObjectFromId(objectId)
-    for _, eggModel in pairs(eggModels) do
-        if eggModel:GetAttribute("OBJECT_UUID") == objectId then
-            return eggModel
-        end
+Tab:AddToggle("AutoSellLilac", {
+    Title = "Auto Sell Lilac",
+    Description = "Automatically sell harvested 'Lilac' plants.",
+    Default = false
+}):OnChanged(function(state)
+    autoSellEnabled = state
+    print("[UI] Auto Sell " .. (state and "Enabled" or "Disabled"))
+end)
+
+Tab:AddButton({
+    Title = "Show Harvested Count",
+    Description = "Shows how many 'Lilac' harvested so far.",
+    Callback = function()
+        Fluent:Notify({
+            Title = "Lilac AutoFarm",
+            Content = "Lilac Harvested: " .. harvestedCount,
+            Duration = 4
+        })
     end
-end
-
-local function CreateEspGui(object, text)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "PetEggDetector"
-    billboard.Adornee = object:FindFirstChildWhichIsA("BasePart") or object.PrimaryPart or object
-    billboard.Size = UDim2.new(0, 200, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
-    billboard.AlwaysOnTop = true
-
-    local label = Instance.new("TextLabel")
-    label.Parent = billboard
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.TextStrokeTransparency = 0
-    label.TextScaled = true
-    label.Font = Enum.Font.SourceSansBold
-
-    billboard.Parent = object
-    return billboard
-end
-
-local function UpdateEsp(objectId, petName)
-    local object = getObjectFromId(objectId)
-    if not object or not espCache[objectId] then return end
-
-    local eggName = object:GetAttribute("EggName") or "Unknown"
-    local labelGui = espCache[objectId]
-    if labelGui and labelGui:FindFirstChildOfClass("TextLabel") then
-        labelGui.TextLabel.Text = eggName .. " | " .. (petName or "?")
-    end
-end
-
-local function AddEsp(object)
-    if object:GetAttribute("OWNER") ~= localPlayer.Name then return end
-    local eggName = object:GetAttribute("EggName") or "Unknown"
-    local petName = eggPets[object:GetAttribute("OBJECT_UUID")]
-    local objectId = object:GetAttribute("OBJECT_UUID")
-    if not objectId then return end
-
-    local text = eggName .. " | " .. (petName or "?")
-    local esp = CreateEspGui(object, text)
-    espCache[objectId] = esp
-    activeEggs[objectId] = object
-end
-
-local function RemoveEsp(object)
-    if object:GetAttribute("OWNER") ~= localPlayer.Name then return end
-    local objectId = object:GetAttribute("OBJECT_UUID")
-    if espCache[objectId] then
-        espCache[objectId]:Destroy()
-        espCache[objectId] = nil
-    end
-    activeEggs[objectId] = nil
-end
-
-local function UpdateStatus(text)
-    if statusLabel then
-        statusLabel:SetText("Status: " .. text)
-    end
-end
-
-local function AutoHop(reason)
-    hopCount = hopCount + 1
-    local currentJobId = game.JobId
-    hopBlacklist[currentJobId] = true
-    warn("🚀 AutoHopping... Reason: "..reason.." | Hop #"..hopCount)
-    UpdateStatus("🚀 Hopping... Reason: "..reason.." | Hop #"..hopCount)
-
-    task.wait(2)
-
-    pcall(function()
-        local servers = game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100")
-        local data = HttpService:JSONDecode(servers)
-
-        for _, server in ipairs(data.data) do
-            if server.id ~= currentJobId and not hopBlacklist[server.id] and server.playing < server.maxPlayers then
-                warn("➡️ Hopping to server ID: "..server.id)
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id)
-                break
-            end
-        end
-    end)
-end
-
-if Tab and Tab.AddToggle then
-    -- Add status label first
-    statusLabel = Tab:AddParagraph({
-        Title = "Status:",
-        Content = "Waiting..."
-    })
-
-    Tab:AddToggle("PetEggDetectESP", {
-        Title = "Pet Hatch Detector",
-        Description = "eggs need to be ready, then server hop until you got the pet you want.",
-        Default = false
-    }):OnChanged(function(state)
-        espEnabled = state
-
-        if espEnabled then
-            UpdateStatus("🟢 Starting Detector...")
-
-            -- Add ESP
-            for _, object in collectionService:GetTagged("PetEggServer") do
-                task.spawn(AddEsp, object)
-            end
-
-            -- Connect add/remove signals
-            addedConn = collectionService:GetInstanceAddedSignal("PetEggServer"):Connect(AddEsp)
-            removedConn = collectionService:GetInstanceRemovedSignal("PetEggServer"):Connect(RemoveEsp)
-
-            -- Hook egg ready event safely
-            local eggReadyConnList = getconnections(replicatedStorage.GameEvents.EggReadyToHatch_RE.OnClientEvent)
-            if eggReadyConnList and #eggReadyConnList > 0 then
-                local conn = eggReadyConnList[1]
-                if conn and typeof(conn.Function) == "function" then
-                    hookfunction(conn.Function, newcclosure(function(objectId, petName)
-                        UpdateEsp(objectId, petName)
-                    end))
-                    warn("✅ EggReadyToHatch_RE hook success!")
-                    UpdateStatus("🟢 Detector Running | Hop #"..hopCount)
-                else
-                    warn("⚠️ EggReadyToHatch_RE conn.Function missing!")
-                    UpdateStatus("⚠️ EggReadyToHatch_RE hook failed! 🚀 Hopping...")
-                    AutoHop("EggReady hook failed")
-                end
-            else
-                warn("⚠️ No connections found on EggReadyToHatch_RE!")
-                UpdateStatus("⚠️ No EggReady conn found! 🚀 Hopping...")
-                AutoHop("No EggReady connections")
-            end
-
-            -- Check if eggPets table is valid
-            if not eggPets or type(eggPets) ~= "table" or #eggPets == 0 then
-                warn("⚠️ eggPets access failed! 🚀 Hopping...")
-                UpdateStatus("⚠️ eggPets access failed! 🚀 Hopping...")
-                AutoHop("eggPets access failed")
-            end
-        else
-            -- Disable ESP
-            UpdateStatus("🔴 Detector Disabled.")
-            for _, gui in pairs(espCache) do
-                gui:Destroy()
-            end
-            espCache = {}
-            activeEggs = {}
-
-            if addedConn then addedConn:Disconnect() addedConn = nil end
-            if removedConn then removedConn:Disconnect() removedConn = nil end
-        end
-    end)
-else
-    warn("❌ Error: Are you using Xeno or invalid executor?")
-end
+})
