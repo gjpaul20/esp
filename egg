@@ -1,6 +1,6 @@
 -- Destroy old UI if present
-if game.CoreGui:FindFirstChild("AutoFarmGui") then
-    game.CoreGui.AutoFarmGui:Destroy()
+if game.CoreGui:FindFirstChild("GrowGardenAutoFarmGui") then
+    game.CoreGui.GrowGardenAutoFarmGui:Destroy()
 end
 
 -- Variables
@@ -9,26 +9,12 @@ local autoSellEnabled = false
 local harvestedCount = 0
 
 local replicatedStorage = game:GetService("ReplicatedStorage")
-local collectionService = game:GetService("CollectionService")
-
--- Simple Functions
-local function HarvestPlant(plant)
-    pcall(function()
-        replicatedStorage.GameEvents.Harvest_RE:FireServer(plant)
-        harvestedCount = harvestedCount + 1
-        UpdateStatus()
-    end)
-end
-
-local function SellPlant(plantName)
-    pcall(function()
-        replicatedStorage.GameEvents.SellPlant_RE:FireServer(plantName)
-    end)
-end
+local players = game:GetService("Players")
+local player = players.LocalPlayer
 
 -- UI Setup
 local gui = Instance.new("ScreenGui")
-gui.Name = "AutoFarmGui"
+gui.Name = "GrowGardenAutoFarmGui"
 gui.ResetOnSpawn = false
 gui.Parent = game.CoreGui
 
@@ -80,7 +66,7 @@ sellButton.MouseButton1Click:Connect(function()
 end)
 
 -- Update Status Text
-function UpdateStatus()
+local function UpdateStatus()
     statusLabel.Text = "Harvested & Sold: " .. harvestedCount
 end
 
@@ -88,18 +74,42 @@ end
 task.spawn(function()
     while true do
         if autoHarvestEnabled then
-            for _, plant in pairs(collectionService:GetTagged("PlayerPlant")) do
-                if plant:GetAttribute("ReadyToHarvest") == true then
-                    local plantName = plant:GetAttribute("PlantName") or "Unknown"
-                    HarvestPlant(plant)
-                    if autoSellEnabled then
-                        task.wait(math.random(1, 2))
-                        SellPlant(plantName)
+            -- Go through garden plots
+            for _, garden in pairs(workspace.Gardens:GetChildren()) do
+                -- Check if this garden belongs to YOU
+                if garden:FindFirstChild("Owner") and garden.Owner.Value == player.UserId then
+                    -- Go through plots
+                    for _, plot in pairs(garden.Plots:GetChildren()) do
+                        local plant = plot:FindFirstChild("Plant")
+                        if plant and plant:IsA("Model") then
+                            local isReady = plant:GetAttribute("IsReady")
+                            local plantName = plant:GetAttribute("PlantName") or "Unknown"
+                            
+                            if isReady == true then
+                                -- Harvest plant
+                                pcall(function()
+                                    replicatedStorage.GameEvents.Harvest_RE:FireServer(plant)
+                                    harvestedCount = harvestedCount + 1
+                                    UpdateStatus()
+                                    print("[+] Harvested: " .. plantName)
+                                end)
+                                
+                                -- Optional sell
+                                if autoSellEnabled then
+                                    task.wait(0.5) -- short delay
+                                    pcall(function()
+                                        replicatedStorage.GameEvents.SellPlant_RE:FireServer(plantName)
+                                        print("[+] Sold: " .. plantName)
+                                    end)
+                                end
+                                
+                                task.wait(1) -- wait before next plant
+                            end
+                        end
                     end
-                    task.wait(math.random(1, 2))
                 end
             end
         end
-        task.wait(1)
+        task.wait(1) -- Main loop delay
     end
 end)
