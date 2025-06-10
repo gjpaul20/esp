@@ -1,6 +1,6 @@
 -- Destroy old UI if present
-if game.CoreGui:FindFirstChild("LilacFarmGui") then
-    game.CoreGui.LilacFarmGui:Destroy()
+if game.CoreGui:FindFirstChild("AutoFarmGui") then
+    game.CoreGui.AutoFarmGui:Destroy()
 end
 
 -- Variables
@@ -28,7 +28,7 @@ end
 
 -- UI Setup
 local gui = Instance.new("ScreenGui")
-gui.Name = "LilacFarmGui"
+gui.Name = "AutoFarmGui"
 gui.ResetOnSpawn = false
 gui.Parent = game.CoreGui
 
@@ -62,7 +62,7 @@ sellButton.Parent = frame
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(0, 220, 0, 30)
 statusLabel.Position = UDim2.new(0, 15, 0, 110)
-statusLabel.Text = "Lilac Harvested: 0"
+statusLabel.Text = "Harvested & Sold: 0"
 statusLabel.TextColor3 = Color3.new(1, 1, 1)
 statusLabel.BackgroundTransparency = 1
 statusLabel.TextScaled = true
@@ -81,7 +81,7 @@ end)
 
 -- Update Status Text
 function UpdateStatus()
-    statusLabel.Text = "Lilac Harvested: " .. harvestedCount
+    statusLabel.Text = "Harvested & Sold: " .. harvestedCount
 end
 
 -- Main farm loop
@@ -89,11 +89,12 @@ task.spawn(function()
     while true do
         if autoHarvestEnabled then
             for _, plant in pairs(collectionService:GetTagged("PlayerPlant")) do
-                if plant:GetAttribute("PlantName") == "Lilac" and plant:GetAttribute("ReadyToHarvest") == true then
+                if plant:GetAttribute("ReadyToHarvest") == true then
+                    local plantName = plant:GetAttribute("PlantName") or "Unknown"
                     HarvestPlant(plant)
                     if autoSellEnabled then
                         task.wait(math.random(1, 2))
-                        SellPlant("Lilac")
+                        SellPlant(plantName)
                     end
                     task.wait(math.random(1, 2))
                 end
