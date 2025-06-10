@@ -1,8 +1,7 @@
--- Auto Harvest + Auto Sell "Lilac" with UI
--- Abuse sprinkler bug smartly
--- Tested on Grow a Garden 2025
+-- Lilac AutoFarm with Anti-AFK + Fixed Fluent UI
+-- Abuse sprinkler bug safely
 
--- Load UI Library (Fluent or any — here using basic library)
+-- Load Fluent UI
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
@@ -17,6 +16,14 @@ local Window = Fluent:CreateWindow({
 
 local Tab = Window:AddTab({ Title = "Main", Icon = "leaf" })
 
+-- Anti-AFK
+local VirtualUser = game:GetService("VirtualUser")
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("[Anti-AFK] Sent fake input to prevent kick.")
+end)
+
 -- Services
 local collectionService = game:GetService("CollectionService")
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,11 +35,11 @@ local autoHarvestEnabled = false
 local autoSellEnabled = false
 local harvestedCount = 0
 
--- Get Harvest and Sell RemoteEvents (adjust these names if devs change them!)
+-- Get RemoteEvents
 local harvestRemote = replicatedStorage:FindFirstChild("HarvestPlant_RE") or replicatedStorage.GameEvents.HarvestPlant_RE
 local sellRemote = replicatedStorage:FindFirstChild("SellPlant_RE") or replicatedStorage.GameEvents.SellPlant_RE
 
--- Function: Harvest plant if it's Lilac and ready
+-- Harvest function
 local function HarvestPlant(plant)
     if plant:GetAttribute("PlantName") == "Lilac" and plant:GetAttribute("ReadyToHarvest") == true then
         if harvestRemote then
@@ -42,8 +49,7 @@ local function HarvestPlant(plant)
             
             -- Auto Sell after harvest
             if autoSellEnabled and sellRemote then
-                -- Delay slightly to look human
-                task.wait(math.random(0.3, 0.6))
+                task.wait(math.random(0.3, 0.6)) -- Random delay to look human
                 sellRemote:FireServer({plant})
                 print("[AutoSell] Sold Lilac #" .. harvestedCount)
             end
@@ -53,7 +59,7 @@ end
 
 -- Auto Harvest loop
 task.spawn(function()
-    while task.wait(0.5) do -- Adjust delay if needed
+    while task.wait(0.5) do -- Delay between harvest loops
         if autoHarvestEnabled then
             for _, plant in pairs(collectionService:GetTagged("PlayerPlant")) do
                 if plant:GetAttribute("OWNER") == localPlayer.Name then
@@ -65,27 +71,37 @@ task.spawn(function()
 end)
 
 -- UI Controls
-Tab:AddToggle("AutoHarvestLilac", {
+Tab:AddToggle("ToggleAutoHarvestLilac", {
     Title = "Auto Harvest Lilac",
     Description = "Automatically harvest 'Lilac' plants when ready.",
     Default = false
 }):OnChanged(function(state)
     autoHarvestEnabled = state
+    Fluent:Notify({
+        Title = "Lilac AutoFarm",
+        Content = "Auto Harvest is now " .. (state and "ENABLED" or "DISABLED"),
+        Duration = 3
+    })
     print("[UI] Auto Harvest " .. (state and "Enabled" or "Disabled"))
 end)
 
-Tab:AddToggle("AutoSellLilac", {
+Tab:AddToggle("ToggleAutoSellLilac", {
     Title = "Auto Sell Lilac",
     Description = "Automatically sell harvested 'Lilac' plants.",
     Default = false
 }):OnChanged(function(state)
     autoSellEnabled = state
+    Fluent:Notify({
+        Title = "Lilac AutoFarm",
+        Content = "Auto Sell is now " .. (state and "ENABLED" or "DISABLED"),
+        Duration = 3
+    })
     print("[UI] Auto Sell " .. (state and "Enabled" or "Disabled"))
 end)
 
 Tab:AddButton({
-    Title = "Show Harvested Count",
-    Description = "Shows how many 'Lilac' harvested so far.",
+    Title = "Show Harvested Lilac Count",
+    Description = "Shows how many 'Lilac' plants harvested so far.",
     Callback = function()
         Fluent:Notify({
             Title = "Lilac AutoFarm",
@@ -94,3 +110,4 @@ Tab:AddButton({
         })
     end
 })
+
